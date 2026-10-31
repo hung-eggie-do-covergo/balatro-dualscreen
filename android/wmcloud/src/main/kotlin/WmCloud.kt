@@ -70,7 +70,16 @@ object WmCloud {
     /** Downloads only [files] of the game into [dest]; progress 0..100 goes to [onProgress]. */
     @JvmStatic @Throws(WmCloudException::class)
     fun downloadFiles(dest: File, files: Set<String>, onProgress: Consumer<Float>) =
-        wmcloud.download(dest, files) { onProgress.accept(it) }
+        wmcloud.download(dest, files, { onProgress.accept(it) })
+
+    /** The game's own 1024 px icon from the macOS depot, for the home-screen shortcut; null if absent. */
+    @JvmStatic @Throws(WmCloudException::class)
+    fun downloadMacIcon(dest: File): File? {
+        wmcloud.download(dest, setOf(MAC_ICON), {}, "macos")
+        return File(dest, MAC_ICON).takeIf { it.isFile }
+    }
+
+    private const val MAC_ICON = "Balatro.app/Contents/Resources/GameIcon.icns"
 
     /** Downloads the game with the signed-in account into [dest]; progress 0..100 goes to [onProgress]. */
     @JvmStatic @Throws(WmCloudException::class)

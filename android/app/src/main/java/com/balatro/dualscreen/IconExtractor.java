@@ -94,6 +94,12 @@ final class IconExtractor {
                 }
             } else if (head[0] == 'M' && head[1] == 'Z') {
                 bmp = iconFromExe(container);
+            } else if (head[0] == 'i' && head[1] == 'c') {
+                // A bare GameIcon.icns, fetched from the macOS depot by the Steam download.
+                byte[] png = largestPng(readFile(container));
+                if (png != null) {
+                    bmp = BitmapFactory.decodeByteArray(png, 0, png.length);
+                }
             }
 
             if (bmp == null) {

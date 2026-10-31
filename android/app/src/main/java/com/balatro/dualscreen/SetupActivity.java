@@ -329,6 +329,7 @@ public class SetupActivity extends Activity {
                 WmCloud.downloadFiles(dir, java.util.Collections.singleton("Balatro.exe"),
                         pct -> runOnUiThread(() -> progress.setProgress(Math.round(pct))));
                 GameAssembler.Info probed = GameAssembler.probe(this, new File(dir, "Balatro.exe"));
+                fetchIcon(new File(dir, "Balatro.exe"));
                 runOnUiThread(() -> {
                     progress.setVisibility(View.GONE);
                     steamButton.setEnabled(true);
@@ -647,6 +648,20 @@ public class SetupActivity extends Activity {
                 LinearLayout.LayoutParams.WRAP_CONTENT, dp(48));
         lp.rightMargin = dp(12);
         return lp;
+    }
+
+    /** The shortcut's icon: the exe's 32 px art, replaced by the macOS depot's 1024 px one when Steam has it. */
+    private void fetchIcon(File exe) {
+        IconExtractor.tryExtract(this, exe);
+        File dir = new File(getCacheDir(), "steam-icon");
+        try {
+            File icns = WmCloud.downloadMacIcon(dir);
+            if (icns != null) IconExtractor.tryExtract(this, icns);
+        } catch (Exception e) {
+            Log.i(TAG, "mac icon unavailable: " + e.getMessage());
+        } finally {
+            deleteTree(dir);
+        }
     }
 
     private static void deleteTree(File f) {

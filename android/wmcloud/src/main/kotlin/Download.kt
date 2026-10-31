@@ -16,12 +16,12 @@ fun downloadGame(dest: File, onProgress: (Float) -> Unit) = download(dest, empty
 
 /** End-to-end check of sign-in, ownership, manifests and chunk download that fetches only [files]. */
 fun testDownload(dest: File, files: Set<String>) {
-    download(dest, files) { log("test download %.1f%%".format(it)) }
+    download(dest, files, { log("test download %.1f%%".format(it)) })
     val missing = files.filterNot { File(dest, it).isFile }
     if (missing.isNotEmpty()) die("test download finished but $missing did not arrive")
 }
 
-internal fun download(dest: File, only: Set<String>, onProgress: (Float) -> Unit) {
+internal fun download(dest: File, only: Set<String>, onProgress: (Float) -> Unit, os: String = "windows") {
     Session(false).use { s ->
         val licenses = try { s.licenses.get(60, TimeUnit.SECONDS) } catch (e: Exception) { die("Steam did not send the account's licenses: $e") }
         val failure = java.util.concurrent.atomic.AtomicReference<Throwable?>(null)
@@ -39,7 +39,7 @@ internal fun download(dest: File, only: Set<String>, onProgress: (Float) -> Unit
                 override fun onDownloadFailed(item: DownloadItem, error: Throwable) { failure.set(error) }
             })
             if (only.isNotEmpty()) restrictToFiles(dd, only)
-            dd.add(AppItem(APP_ID, false, dest.path, "public", "", false, "windows", false, "64", false, "english",
+            dd.add(AppItem(APP_ID, false, dest.path, "public", "", false, os, false, "64", false, "english",
                 false, emptyList(), emptyList(), false, false))
             dd.finishAdding()
             // A failed item does not always complete the downloader; stop waiting as soon as one fails.
