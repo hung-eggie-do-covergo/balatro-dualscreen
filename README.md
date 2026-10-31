@@ -1,180 +1,105 @@
-# Balatro Dual Screen
+# Balatro Dual Screen (Steam edition)
 
-Play [Balatro](https://www.playbalatro.com/) across **both screens** of a
-dual-screen Android handheld. Your hand, the Play/Sort/Discard buttons and the
-shop live on the lower touchscreen; the table, jokers and score stay on top.
+An Android app that runs your own copy of [Balatro](https://www.playbalatro.com/)
+on a handheld — split across both screens on dual-screen devices such as the
+**AYN Thor**, and as the normal game on everything else, including foldables.
 
-Built and tested on the **AYN Thor**. Nothing in the code is tied to that
-device — the second screen is found through Android's display API, not by model
-name — but that is the only hardware this has been tested on.
+It signs in to Steam, downloads the game for you, and keeps your saves and
+achievements in step with Steam on PC.
 
-> **This mod is free.** If you paid money for it, demand a refund.
+> Free and unofficial. If you paid for this, ask for a refund.
 
----
+![Playing a hand across both screens](screenshots/hand.png)
 
-|  |  |
-| :--: | :--: |
-| ![Playing a hand](screenshots/hand.png) | ![The shop](screenshots/shop.png) |
-| Your hand and its controls on the lower screen, the table and jokers on top | The shop moves down too, so what you are buying is under your thumbs |
-| ![Opening a booster pack](screenshots/buffoon-pack.png) | ![The main menu](screenshots/menu.png) |
-| Booster packs take over the panel, with the pack animation on both screens | Menus are laid out for the lower screen rather than letterboxed |
+## Features
 
----
-
-## What it does
-
-- **Hand on the lower screen** — cards, Play / Sort / Discard, all touch-driven.
-- **Shop, blind select, booster packs and menus** move down too, so whatever
-  you are interacting with is under your thumbs.
-- **Optional extras**, each a toggle in *Options → Settings → Dual Screen*:
-  - hand score and consumables on the lower screen
-  - a wider joker row that uses the space freed up top
-  - the game's CRT effect applied to the lower screen as well
-  - RGB stick lighting that follows the on-screen colours (AYN Thor)
-  - a 60 FPS cap to save battery, or 120 if you prefer
-- **Controller and touch** both work throughout.
-- **Single-screen safe** — with the second screen switched off, or on a device
-  that has only one, the game behaves exactly like vanilla.
+- **Two screens, one game.** Table, jokers and score on top; your hand,
+  Play / Sort / Discard, the shop and booster packs on the touchscreen below.
+  On a single screen, or with the second one off, it plays exactly like vanilla.
+- **Steam sign-in by QR code.** Scan once with the Steam app on your phone. No
+  password is typed on the device.
+- **Download from Steam.** First-time setup fetches `Balatro.exe` from your
+  Steam library — or pick a `Balatro.exe`, zipped `Balatro.app` or
+  `Balatro.love` you already have.
+- **Steam Cloud saves.** Saves are pulled before you play and pushed when you
+  leave, so a run started on PC continues on the handheld and back. When both
+  sides changed, you choose which to keep and the other is backed up.
+- **Steam achievements.** Unlocks earned on the handheld are submitted to your
+  Steam account.
+- **Controller navigation across both screens**, following what you see rather
+  than the game's internal layout.
+- **Listed as a game** by launchers and Samsung's Game Booster / Gaming Hub.
+- **Updates itself** from this repository's releases.
 
 ## Requirements
 
-- A dual-screen Android device (Android 8.0 / API 26 or newer).
-- **Your own legally purchased copy of Balatro for PC or Mac.** This app
-  contains no part of the game.
-- Supported version: **Steam 1.0.1o**. Other PC versions may work but are
-  untested.
-
-### Which copies work
-
-| Container | Works |
-| --- | --- |
-| `Balatro.exe` (Steam, Windows) | yes |
-| `Balatro.app` (Steam, macOS) — zipped | yes |
-| `Balatro.love` | yes |
-| iOS / Mac App Store build | **no** |
-| Console builds | **no** |
-
-The mobile build depends on `love.platform`, a launcher module that ships with
-Apple's build of the game rather than with LÖVE itself, across 44 call sites.
-`love-android` has no such module, so the game cannot start. The app rejects
-that build explicitly rather than failing later in a confusing way.
+- Android 8.0 (API 26) or newer, arm64.
+- **Balatro for PC or Mac on Steam** (or a copy you own of the PC/Mac build).
+  The app contains no part of the game. The iOS, Android, Mac App Store and
+  console builds cannot be used.
+- Built and tested against Steam **1.0.1o**; newer PC versions get a warning
+  and usually work.
+- Tested on the AYN Thor and a Galaxy Z Fold 8.
 
 ## Install
 
-1. Download the latest APK from the [**Releases**](../../releases) tab.
-2. Copy it to your device and install it. Android will ask you to allow
-   installing apps from this source — normal for anything outside the Play
-   Store.
-3. Get your Balatro copy onto the device:
-   - **Windows:** `Balatro.exe`, from `Steam\steamapps\common\Balatro\`
-   - **macOS:** a **ZIP** of `Balatro.app`, from
-     `~/Library/Application Support/Steam/steamapps/common/Balatro/`
-     (a `.app` is a folder, so it must be zipped to copy it across)
-   - or a `Balatro.love` archive
+1. Download the APK from [**Releases**](../../releases) (or add this repository
+   to Obtainium).
+2. Install it. Android asks you to allow installs from that source.
+3. Open it and choose **Download from Steam**, then scan the QR code with the
+   Steam app. The game is downloaded, built on the device and started — your
+   cloud saves come along.
+4. The app offers to reinstall itself once so it can mark itself as a game for
+   Samsung's game services. Optional.
 
-   Anywhere the device's file picker can reach is fine — `Downloads` is easiest.
-4. Open the app. On first launch it asks you to choose that file, checks it,
-   and builds your game. This takes a few seconds.
-5. It offers to add a home-screen shortcut, then starts the game.
-
-Your Balatro copy is only read during that build. The game is assembled into
-the app's private storage; nothing is uploaded anywhere.
-
-### Updating
-
-Install the new APK over the old one and open it. To force a rebuild from
-scratch, clear the app's storage first (Android Settings → Apps → Balatro Dual
-Screen → Storage) — note that this also removes in-app saves.
+Coming from the original release? It is signed with a different key: uninstall
+it first. Its local saves are lost unless they were already on Steam Cloud.
 
 ## Building from source
 
-You do not need to build anything to play — use the Releases tab. To build it
-yourself:
-
 ```bash
-python3 tools/build.py --balatro /path/to/Balatro.app     # or Balatro.exe
+python3 tools/build.py --release                      # publishable APK, no game inside
+python3 tools/build.py --balatro path/to/Balatro.exe  # dev APK with your game embedded
 ```
 
-That extracts the game, adds the overlay, packages it and produces an APK with
-the game already inside, which is convenient for development. To build the
-publishable APK instead, which contains no game data:
+- `--icon <Balatro.app|Balatro.exe|GameIcon.icns|png>` gives a **personal**
+  build the game's own launcher icon. Such an APK is not publishable.
+- `--app-id <id>` builds beside an existing install, for testing.
+- Release signing reads `BALATRO_STORE_FILE` and friends from
+  `~/.gradle/gradle.properties`; without them the debug key is used.
 
-```bash
-python3 tools/build.py --release
-```
+Toolchain versions are in [`docs/android-build.md`](docs/android-build.md),
+design decisions in [`docs/decisions/`](docs/decisions/).
 
-To check a copy of the game before building with it:
+This is not a fork of Balatro: it is an Android app, a Lua overlay that wraps
+the game's own functions at load time, and a build script. The repository
+contains no Balatro code or assets, and `tools/check_guards.py` keeps it that way.
 
-```bash
-python3 tools/check_balatro_source.py /path/to/your/Balatro.app
-```
+## Credits
 
-You need the Android SDK/NDK and a JDK; exact versions and rationale are in
-[`docs/android-build.md`](docs/android-build.md).
+This builds on **[balatro-dualscreen](https://github.com/rosbean/balatro-dualscreen)
+by rosbean**, which created the dual-screen overlay, the on-device game
+assembly and the AYN Thor support. If you enjoy the dual-screen part, say thanks
+to them on [Ko-fi](https://ko-fi.com/rosbean).
 
-No signing key is needed: without one the build falls back to Android's debug
-key and produces a perfectly installable APK. It just cannot install *over* a
-release from the Releases tab, because the signatures differ — uninstall the
-released version first, which clears its saves.
+Also from earlier work:
 
-## How it works
+- [BanjoRecomp](https://github.com/BanjoRecomp/BanjoRecomp) (GPL-3.0) — the
+  dual-screen Android implementation the original was adapted from.
+- [Bifrost](https://github.com/Pollux-MoonBench/Bifrost) (GPL-3.0) — the
+  technique for the AYN Thor's stick LEDs.
+- wmcloud from [wildermyth-android](https://github.com/hung-eggie-do-covergo/wildermyth-android)
+  (MIT) — Steam sign-in, depot download and Cloud sync, built on
+  [JavaSteam](https://github.com/Longi94/JavaSteam).
+- [balatro-portrait-mobile](https://github.com/ShaggyLorean/balatro-portrait-mobile)
+  — consulted as reference only; no code taken.
 
-This is not a fork of Balatro. It is an Android app, a Lua overlay and a build
-script. Your copy of the game supplies everything else.
+[`NOTICE.md`](NOTICE.md) records what came from where. Written with substantial
+help from an AI coding assistant; every feature was tested on real hardware.
 
-```
-  this repo (android/, lua/dualscreen/, tools/)  +  your Balatro copy
-                              |
-              extract -> add overlay -> Game.love -> APK
-```
+## Licence
 
-The overlay reassigns a handful of globals when the game loads, so it inherits
-upstream behaviour rather than replacing it. Exactly one line is added to the
-game's own `main.lua`.
+GPL-3.0 — see [`COPYING`](COPYING).
 
-Design decisions and the reasoning behind them are recorded in
-[`docs/decisions/`](docs/decisions/).
-
-## Support
-
-If you enjoy this and want to say thank you:
-
-[![Support me on Ko-fi](https://img.shields.io/badge/Ko--fi-Support%20me-FF5E5B?logo=ko-fi&logoColor=white)](https://ko-fi.com/rosbean)
-
-Entirely optional, and always appreciated.
-
-## Licence and credits
-
-Released under the **GNU General Public License v3.0** — see [`COPYING`](COPYING).
-
-This project stands on work others did first:
-
-- **[BanjoRecomp](https://github.com/BanjoRecomp/BanjoRecomp)** (GPL-3.0) — the
-  working dual-screen Android implementation this one learned from. Code is
-  lifted and adapted from it, which is why this project is GPL-3.0.
-- **[Bifrost](https://github.com/Pollux-MoonBench/Bifrost)** (GPL-3.0) by
-  Pollux-MoonBench — an LED controller for the AYN Thor. Its `LedController`
-  worked out how to reach the stick LEDs, and the RGB lighting here follows
-  that technique.
-- **[balatro-portrait-mobile](https://github.com/ShaggyLorean/balatro-portrait-mobile)**
-  by ShaggyLorean — prior art that showed Balatro's layout can be reflowed on
-  Android, and where the layout logic lives. Read as reference only: it carries
-  no licence grant, so **no code from it is used here**.
-
-[`NOTICE.md`](NOTICE.md) records exactly what came from where.
-
-### Built with AI assistance
-
-This project was written with substantial help from an AI coding assistant
-(Claude). Design decisions, testing on real hardware and every judgement call
-about what to keep were the author's; a great deal of the implementation,
-investigation and documentation was produced in collaboration with the model.
-
-Mentioned because you deserve to know what you are installing and reading. It
-does not change what the code does or how carefully it was tested — every
-feature here was verified on a physical device before it shipped — but if that
-matters to you, now you know before you download it.
-
-Balatro is © LocalThunk, published by Playstack. This project is an unofficial
-fan modification, not affiliated with or endorsed by either. It contains no
-Balatro code or assets, and you must own the game to use it.
+Balatro is © LocalThunk, published by Playstack. Steam is a trademark of Valve.
+This project is not affiliated with or endorsed by any of them.
