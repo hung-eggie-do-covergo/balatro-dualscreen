@@ -64,6 +64,12 @@ android {
         }
     }
 
+    packaging {
+        // JavaSteam's dependencies (okhttp, bouncycastle, protobuf) each ship these JVM-only manifests.
+        resources.excludes += ['META-INF/versions/9/OSGI-INF/MANIFEST.MF', 'META-INF/versions/9/module-info.class',
+                               'META-INF/*.kotlin_module', 'META-INF/DEPENDENCIES', 'META-INF/INDEX.LIST']
+    }
+
     buildTypes {
         release {
             minifyEnabled true
@@ -108,4 +114,8 @@ dependencies {
     api fileTree(dir: 'libs', include: ['*.jar'])
     api 'androidx.appcompat:appcompat:1.6.1'
     api project(':love')
+    implementation(project(':wmcloud')) {
+        exclude group: 'com.github.luben' // desktop zstd jar; the Android AAR below replaces it
+    }
+    implementation 'com.github.luben:zstd-jni:1.5.7-6@aar' // Steam depot chunks are zstd-compressed
 }

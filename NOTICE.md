@@ -134,6 +134,21 @@ This is an unofficial fan project. It is not affiliated with, endorsed by, or
 connected to LocalThunk, Playstack, or AYN.
 
 
+5. wmcloud — CODE IS VENDORED AND ADAPTED (MIT)
+-----------------------------------------------
+
+Upstream: the `wmcloud` module of wildermyth-android, by eggie. Licence: MIT;
+its licence text is kept beside the code at `android/wmcloud/LICENSE`.
+
+`android/wmcloud/` is a copy adapted for Balatro: Steam QR sign-in, depot
+download and Steam Cloud save sync, built on JavaSteam. The changes are the app
+id, the cloud root and the set of synced save files; Wildermyth's DLC and
+achievement code was removed. MIT code may be included in a GPL-3.0 work.
+
+Steam is a trademark of Valve Corporation. This project is not affiliated with
+Valve.
+
+
 Trademarks
 ----------
 

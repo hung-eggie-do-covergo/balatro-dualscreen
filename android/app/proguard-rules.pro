@@ -27,3 +27,16 @@
 -keepclassmembers class * {
     @androidx.annotation.Keep *;
 }
+
+# Steam (wmcloud): JavaSteam builds messages and handlers by reflection, and
+# finds BouncyCastle and protobuf classes by name.
+-keep class wmcloud.** { *; }
+-keep class in.dragonbra.** { *; }
+-keep class org.bouncycastle.** { *; }
+-keep class com.google.protobuf.** { *; }
+-dontwarn in.dragonbra.**
+-dontwarn org.bouncycastle.**
+-dontwarn com.google.protobuf.**
+-dontwarn okhttp3.internal.**
+-dontwarn org.slf4j.**
+-dontwarn javax.annotation.**
