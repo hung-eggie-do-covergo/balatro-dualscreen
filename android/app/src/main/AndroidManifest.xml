@@ -45,6 +45,7 @@
         android:name="com.balatro.dualscreen.SetupActivity"
         android:exported="true"
         android:label="${NAME}"
+        android:screenOrientation="sensorLandscape"
         android:theme="@android:style/Theme.Material.NoActionBar" >
       <intent-filter>
         <action android:name="android.intent.action.MAIN" />

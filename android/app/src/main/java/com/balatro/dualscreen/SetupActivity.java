@@ -101,6 +101,7 @@ public class SetupActivity extends Activity {
                     android.view.WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES;
         }
         getWindow().getDecorView().setBackgroundColor(FELT);
+        markAsGame();
 
         // A game already on board: only Steam Cloud is left to do.
         if (GameAssembler.assembled(this) != null || hasEmbeddedGame()) {
@@ -109,6 +110,18 @@ public class SetupActivity extends Activity {
         }
 
         buildUi();
+    }
+
+    /**
+     * Samsung's game list (Game Booster, Gaming Hub) ignores the manifest category and reads the
+     * installer's category hint, which only the installing app may set. That holds when this app is
+     * its own installer; from adb or a file manager the call is refused and nothing changes.
+     */
+    private void markAsGame() {
+        try {
+            getPackageManager().setApplicationCategoryHint(getPackageName(), android.content.pm.ApplicationInfo.CATEGORY_GAME);
+        } catch (SecurityException ignored) {
+        }
     }
 
     private boolean hasEmbeddedGame() {
@@ -492,7 +505,8 @@ public class SetupActivity extends Activity {
         scroll.setFillViewport(true);
         FrameLayout root = new FrameLayout(this);
         root.setPadding(dp(16), dp(16), dp(16), dp(16));
-        root.addView(card, new FrameLayout.LayoutParams(dp(620), FrameLayout.LayoutParams.WRAP_CONTENT,
+        int width = Math.min(dp(620), getResources().getDisplayMetrics().widthPixels - dp(32));
+        root.addView(card, new FrameLayout.LayoutParams(width, FrameLayout.LayoutParams.WRAP_CONTENT,
                 Gravity.CENTER));
         scroll.addView(root);
         scroll.setBackgroundColor(FELT);
