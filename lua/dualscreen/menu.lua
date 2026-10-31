@@ -220,16 +220,10 @@ function menu.install()
     function create_UIBox_main_menu_buttons(...)
         local t = orig(...)
 
-        -- Gated on the SETTING rather than on DS.active. The menu is built
-        -- before the companion display is known, so DS.active is still
-        -- false at that moment and the stack would never be applied on the
-        -- first menu. The setting is loaded with the profile and is the
-        -- player's stated intent either way.
-        --
-        -- Consequence worth knowing: toggling Dual Screen does not restyle a
-        -- menu that is already on screen. It takes effect next time the menu is
-        -- built.
+        -- Asks the bridge directly: the menu is built before the first tick
+        -- sets DS.active, and a single screen must keep vanilla's strip.
         local want = DS.settings and DS.settings.enabled()
+                     and DS.bridge and DS.bridge.companion_showing()
         if not want then
             return t
         end
@@ -244,6 +238,19 @@ function menu.install()
     end
 
     DS.log("menu: main-menu buttons will stack vertically")
+end
+
+--- Re-run vanilla's menu construction so the stack follows DS.active.
+function menu.rebuild()
+    if not (G.STATE == G.STATES.MENU and G.MAIN_MENU_UI
+            and type(set_main_menu_UI) == "function") then
+        return
+    end
+    -- set_main_menu_UI also recreates the profile button (common_events.lua:765).
+    G.MAIN_MENU_UI:remove()
+    if G.PROFILE_BUTTON then G.PROFILE_BUTTON:remove() end
+    local ok, err = pcall(set_main_menu_UI)
+    if not ok then DS.log("menu: rebuild failed: " .. tostring(err)) end
 end
 
 return menu

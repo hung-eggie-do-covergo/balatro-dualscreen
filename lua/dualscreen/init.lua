@@ -841,6 +841,7 @@ function love.update(dt)
             local ok, err = pcall(set_screen_positions)
             if not ok then DS.log("relayout on toggle failed: " .. tostring(err)) end
         end
+        menu.rebuild()
     end
 
     -- Relayout when the HAND'S LIVENESS changes, not only on stage change.
