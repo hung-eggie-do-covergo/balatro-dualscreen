@@ -53,7 +53,7 @@ final class SteamSync {
                 WmCloud.afterPlay(dir, SUBMIT_ACHIEVEMENTS);
             } catch (Exception e) {
                 // A changed cloud resurfaces as a conflict at the next launch's pull.
-                Log.w(TAG, "steam: push skipped: " + e.getMessage());
+                Log.w(TAG, "steam: push skipped", e);
             }
         });
     }

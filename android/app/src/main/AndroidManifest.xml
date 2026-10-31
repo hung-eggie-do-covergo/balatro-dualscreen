@@ -3,6 +3,9 @@
   <!-- Steam only: sign-in, game download and Cloud saves. The game itself
        never touches the network. -->
   <uses-permission android:name="android.permission.INTERNET" />
+  <!-- Reinstalls itself: for updates, and to become its own installer so it
+       may mark itself a game (SetupActivity). Android still asks each time. -->
+  <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
   <uses-permission android:name="android.permission.VIBRATE" />
   <uses-permission android:name="android.permission.BLUETOOTH" />
   <!-- Stripped by the noRecord flavour; declared so the flavour has a node

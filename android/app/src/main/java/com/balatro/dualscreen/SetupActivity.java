@@ -115,12 +115,15 @@ public class SetupActivity extends Activity {
     /**
      * Samsung's game list (Game Booster, Gaming Hub) ignores the manifest category and reads the
      * installer's category hint, which only the installing app may set. That holds when this app is
-     * its own installer; from adb or a file manager the call is refused and nothing changes.
+     * its own installer; otherwise the call would throw, so it is skipped.
      */
     private void markAsGame() {
+        if (!SelfInstaller.isOwnInstaller(this)) return;
         try {
             getPackageManager().setApplicationCategoryHint(getPackageName(), android.content.pm.ApplicationInfo.CATEGORY_GAME);
-        } catch (SecurityException ignored) {
+        } catch (RuntimeException e) {
+            // Android 17 throws IllegalArgumentException, not the documented SecurityException.
+            Log.w(TAG, "category hint refused: " + e.getMessage());
         }
     }
 
@@ -151,6 +154,11 @@ public class SetupActivity extends Activity {
             launchGame();
             return;
         }
+        checkForUpdateInBackground();
+        offerGameRegistration(() -> offerUpdate(this::steamStep));
+    }
+
+    private void steamStep() {
         SteamSync.configure(this);
         if (WmCloud.isLoggedIn()) {
             syncThenLaunch();
@@ -165,6 +173,113 @@ public class SetupActivity extends Activity {
                         launchGame();
                     });
         }
+    }
+
+    // ------------------------------------------------------------------
+    // Installing itself: game registration and updates
+    // ------------------------------------------------------------------
+
+    private static final String PREF_REGISTER_DECLINED = "register_declined";
+    private static final String PREF_UPDATE_TAG = "update_tag", PREF_UPDATE_URL = "update_url",
+            PREF_UPDATE_SIZE = "update_size", PREF_UPDATE_CHECKED = "update_checked";
+
+    /** Only the installer may set the category hint, so offer to become our own installer once. */
+    private void offerGameRegistration(Runnable next) {
+        if (SelfInstaller.isOwnInstaller(this)
+                || getPreferences(MODE_PRIVATE).getBoolean(PREF_REGISTER_DECLINED, false)) {
+            next.run();
+            return;
+        }
+        panel("List it as a game?", "Samsung's Game Booster and Gaming Hub only list apps whose installer "
+                        + "says they are games. Reinstall this app through itself once and it can say so. "
+                        + "Android asks you to confirm; your game and saves stay.", null, false,
+                "Reinstall", () -> reinstall(next),
+                "Not now", () -> {
+                    getPreferences(MODE_PRIVATE).edit().putBoolean(PREF_REGISTER_DECLINED, true).apply();
+                    next.run();
+                });
+    }
+
+    private void reinstall(Runnable next) {
+        if (!SelfInstaller.mayInstall(this)) {
+            // Back from Settings the same card is waiting; Reinstall then goes ahead.
+            SelfInstaller.askToInstall(this);
+            return;
+        }
+        panel("Reinstalling…", "Confirm in Android's dialog. Reopen the app afterwards.", null, true,
+                null, null, null, null);
+        try {
+            SelfInstaller.install(this, new File(getPackageCodePath()), status -> runOnUiThread(() ->
+                    panel("Not reinstalled", "Android said: " + status + ". You can try again next launch.", null,
+                            false, "Continue", next, null, null)));
+        } catch (IOException e) {
+            Log.w(TAG, "reinstall failed", e);
+            next.run();
+        }
+    }
+
+    /** At most daily, in the background; a find is offered at the next launch. */
+    private void checkForUpdateInBackground() {
+        final android.content.SharedPreferences prefs = getPreferences(MODE_PRIVATE);
+        if (System.currentTimeMillis() - prefs.getLong(PREF_UPDATE_CHECKED, 0) < 24 * 3600_000L) return;
+        new Thread(() -> {
+            try {
+                SelfInstaller.Update u = SelfInstaller.check(this);
+                android.content.SharedPreferences.Editor e = prefs.edit()
+                        .putLong(PREF_UPDATE_CHECKED, System.currentTimeMillis());
+                if (u != null) {
+                    e.putString(PREF_UPDATE_TAG, u.version).putString(PREF_UPDATE_URL, u.url)
+                            .putLong(PREF_UPDATE_SIZE, u.size);
+                }
+                e.apply();
+            } catch (Exception e) {
+                Log.i(TAG, "update check: " + e.getMessage()); // offline is fine
+            }
+        }, "update-check").start();
+    }
+
+    private void offerUpdate(Runnable next) {
+        android.content.SharedPreferences prefs = getPreferences(MODE_PRIVATE);
+        String tag = prefs.getString(PREF_UPDATE_TAG, null);
+        String installed;
+        try {
+            installed = getPackageManager().getPackageInfo(getPackageName(), 0).versionName;
+        } catch (Exception e) {
+            installed = null;
+        }
+        if (tag == null || SelfInstaller.compareVersions(tag, installed) <= 0) {
+            next.run();
+            return;
+        }
+        SelfInstaller.Update u = new SelfInstaller.Update(tag, prefs.getString(PREF_UPDATE_URL, ""),
+                prefs.getLong(PREF_UPDATE_SIZE, 0));
+        panel("Update available", "Version " + tag + " is out. Your game and saves stay.", null, false,
+                "Update", () -> update(u, next),
+                "Later", next);
+    }
+
+    private void update(SelfInstaller.Update u, Runnable next) {
+        if (!SelfInstaller.mayInstall(this)) {
+            SelfInstaller.askToInstall(this);
+            return;
+        }
+        panel("Updating", "Downloading " + u.version + "…", null, true, null, null, null, null);
+        worker.execute(() -> {
+            try {
+                File apk = SelfInstaller.download(this, u, pct -> { });
+                runOnUiThread(() -> {
+                    try {
+                        SelfInstaller.install(this, apk, status -> runOnUiThread(next));
+                    } catch (IOException e) {
+                        next.run();
+                    }
+                });
+            } catch (Exception e) {
+                Log.w(TAG, "update failed", e);
+                runOnUiThread(() -> panel("Update failed", e.getMessage(), null, false,
+                        "Continue", next, null, null));
+            }
+        });
     }
 
     private static final String SCAN = "Open the Steam app on your phone, tap the shield (Steam Guard) and scan this code.";
