@@ -64,6 +64,8 @@ open class WmCloudException(msg: String) : Exception(msg)
 /** Pulling would overwrite local saves that were never uploaded. */
 class ConflictException(val files: List<String>) :
     WmCloudException("local changes not pushed yet, would be overwritten: $files (keep this device: push --force, keep the cloud: pull --force)")
+/** Steam lists the file but will not serve it, e.g. after an upload batch was left open. */
+class NoDownloadUrl(rel: String) : WmCloudException("no download URL for $rel")
 /** Another device synced since this one last pulled. */
 class CloudChangedException(msg: String) : WmCloudException(msg)
 
@@ -213,7 +215,7 @@ fun localFiles(game: File): Map<String, File> =
 
 fun download(s: Session, f: CloudFile): ByteArray {
     val info = s.cloud.clientFileDownload(APP_ID, f.cloudName).get()
-    if (info.urlHost.isEmpty()) die("no download URL for ${f.rel}")
+    if (info.urlHost.isEmpty()) throw NoDownloadUrl(f.rel)
     val req = Request.Builder().url((if (info.useHttps) "https://" else "http://") + info.urlHost + info.urlPath)
         .headers(Headers.headersOf(*info.requestHeaders.flatMap { listOf(it.name, it.value) }.toTypedArray())).build()
     val body = http.newCall(req).execute().use { r ->
@@ -249,7 +251,11 @@ fun backupCloud(game: File, s: Session, files: List<CloudFile>) {
     val out = File(dir, "cloud-${System.currentTimeMillis() / 1000}.zip")
     try {
         ZipOutputStream(out.outputStream().buffered()).use { z ->
-            for (f in files) { z.putNextEntry(ZipEntry(f.rel)); z.write(download(s, f)); z.closeEntry() }
+            for (f in files) {
+                // Steam serving no URL means no readable copy exists to lose; anything else stops the push.
+                val bytes = try { download(s, f) } catch (e: NoDownloadUrl) { log("cloud copy of ${f.rel} unreadable, not backed up"); continue }
+                z.putNextEntry(ZipEntry(f.rel)); z.write(bytes); z.closeEntry()
+            }
         }
     } catch (e: Exception) { out.delete(); die("could not back up the cloud saves, not overwriting them: $e") }
     log("backed up ${files.size} cloud file(s) to ${out.name}")
@@ -322,30 +328,37 @@ fun push(s: Session, game: File, force: Boolean) {
         filesToDelete = toDelete.map { ROOT + it },
         clientId = state.clientId, appBuildId = 0).get()
     var ok = true
-    // The batch only announces deletes; each one still needs its own call.
-    val rpc = s.client.getHandler(SteamUnifiedMessages::class.java)!!.createService<Cloud>()
-    for (rel in toDelete) {
-        val req = CCloud_ClientDeleteFile_Request.newBuilder().setAppid(APP_ID).setFilename(ROOT + rel)
-            .setIsExplicitDelete(true).setUploadBatchId(batch.batchID).build()
-        val res = rpc.clientDeleteFile(req).toFuture().get()
-        if (res.result != EResult.OK) { ok = false; log("delete $rel: ${res.result}") }
-    }
-    for ((rel, sha) in changed) {
-        val file = File(game, rel)
-        val bytes = file.readBytes()
-        val info = s.cloud.beginFileUpload(APP_ID, bytes.size, bytes.size, unhex(sha), Date(file.lastModified()),
-            ROOT + rel, canEncrypt = false, uploadBatchId = batch.batchID).get()
-        var fileOk = true
-        for (b in info.blockRequests) {
-            val body = if (b.explicitBodyData.isNotEmpty()) b.explicitBodyData
-                else bytes.copyOfRange(b.blockOffset.toInt(), b.blockOffset.toInt() + b.blockLength)
-            val req = Request.Builder().url((if (b.useHttps) "https://" else "http://") + b.urlHost + b.urlPath)
-                .headers(Headers.headersOf(*b.requestHeaders.flatMap { listOf(it.name, it.value) }.toTypedArray()))
-                .put(body.toRequestBody()).build()
-            http.newCall(req).execute().use { r -> if (!r.isSuccessful) { fileOk = false; log("upload $rel: HTTP ${r.code}") } }
+    // A throw between begin and complete would leave the batch open, and Steam then serves no URL for
+    // the files in it; close it as failed so the previous versions stay.
+    try {
+        // The batch only announces deletes; each one still needs its own call.
+        val rpc = s.client.getHandler(SteamUnifiedMessages::class.java)!!.createService<Cloud>()
+        for (rel in toDelete) {
+            val req = CCloud_ClientDeleteFile_Request.newBuilder().setAppid(APP_ID).setFilename(ROOT + rel)
+                .setIsExplicitDelete(true).setUploadBatchId(batch.batchID).build()
+            val res = rpc.clientDeleteFile(req).toFuture().get()
+            if (res.result != EResult.OK) { ok = false; log("delete $rel: ${res.result}") }
         }
-        val committed = s.cloud.commitFileUpload(fileOk, APP_ID, unhex(sha), ROOT + rel).get()
-        if (!fileOk || !committed) ok = false else log("pushed $rel")
+        for ((rel, sha) in changed) {
+            val file = File(game, rel)
+            val bytes = file.readBytes()
+            val info = s.cloud.beginFileUpload(APP_ID, bytes.size, bytes.size, unhex(sha), Date(file.lastModified()),
+                ROOT + rel, canEncrypt = false, uploadBatchId = batch.batchID).get()
+            var fileOk = true
+            for (b in info.blockRequests) {
+                val body = if (b.explicitBodyData.isNotEmpty()) b.explicitBodyData
+                    else bytes.copyOfRange(b.blockOffset.toInt(), b.blockOffset.toInt() + b.blockLength)
+                val req = Request.Builder().url((if (b.useHttps) "https://" else "http://") + b.urlHost + b.urlPath)
+                    .headers(Headers.headersOf(*b.requestHeaders.flatMap { listOf(it.name, it.value) }.toTypedArray()))
+                    .put(body.toRequestBody()).build()
+                http.newCall(req).execute().use { r -> if (!r.isSuccessful) { fileOk = false; log("upload $rel: HTTP ${r.code}") } }
+            }
+            val committed = s.cloud.commitFileUpload(fileOk, APP_ID, unhex(sha), ROOT + rel).get()
+            if (!fileOk || !committed) ok = false else log("pushed $rel")
+        }
+    } catch (e: Exception) {
+        try { s.cloud.completeAppUploadBatch(APP_ID, batch.batchID, EResult.Fail).get() } catch (_: Exception) { }
+        throw e
     }
     s.cloud.completeAppUploadBatch(APP_ID, batch.batchID, if (ok) EResult.OK else EResult.Fail).get()
     if (!ok) die("some uploads failed; cloud batch marked failed, local saves untouched")
