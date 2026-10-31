@@ -21,7 +21,7 @@ fun testDownload(dest: File, files: Set<String>) {
     if (missing.isNotEmpty()) die("test download finished but $missing did not arrive")
 }
 
-private fun download(dest: File, only: Set<String>, onProgress: (Float) -> Unit) {
+internal fun download(dest: File, only: Set<String>, onProgress: (Float) -> Unit) {
     Session(false).use { s ->
         val licenses = try { s.licenses.get(60, TimeUnit.SECONDS) } catch (e: Exception) { die("Steam did not send the account's licenses: $e") }
         val failure = java.util.concurrent.atomic.AtomicReference<Throwable?>(null)

@@ -67,6 +67,11 @@ object WmCloud {
     @JvmStatic @Throws(WmCloudException::class)
     fun testDownload(dest: File, files: Set<String>) = wmcloud.testDownload(dest, files)
 
+    /** Downloads only [files] of the game into [dest]; progress 0..100 goes to [onProgress]. */
+    @JvmStatic @Throws(WmCloudException::class)
+    fun downloadFiles(dest: File, files: Set<String>, onProgress: Consumer<Float>) =
+        wmcloud.download(dest, files) { onProgress.accept(it) }
+
     /** Downloads the game with the signed-in account into [dest]; progress 0..100 goes to [onProgress]. */
     @JvmStatic @Throws(WmCloudException::class)
     fun downloadGame(dest: File, onProgress: Consumer<Float>) = wmcloud.downloadGame(dest) { onProgress.accept(it) }

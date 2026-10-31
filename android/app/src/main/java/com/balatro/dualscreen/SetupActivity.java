@@ -76,6 +76,7 @@ public class SetupActivity extends Activity {
     private static final int PICK_REQUEST = 41;
 
     private TextView status;
+    private Button steamButton;
     private Button pickButton;
     private Button buildButton;
     private ProgressBar progress;
@@ -139,7 +140,7 @@ public class SetupActivity extends Activity {
         } else {
             panel("Steam Cloud saves", "Sign in once to keep your runs and progress in step with Steam on PC.",
                     null, false,
-                    "Sign in with Steam", this::signIn,
+                    "Sign in with Steam", () -> signIn(this::syncThenLaunch, this::launchGame),
                     "Not now", () -> {
                         getPreferences(MODE_PRIVATE).edit().putBoolean(PREF_STEAM_DECLINED, true).apply();
                         launchGame();
@@ -152,30 +153,66 @@ public class SetupActivity extends Activity {
     /** Bumped per sign-in attempt; a superseded attempt's callbacks are ignored. */
     private int loginGen;
 
-    private void signIn() {
+    /** QR sign-in, then [then]; [cancel] if the player backs out. */
+    private void signIn(Runnable then, Runnable cancel) {
         final int gen = ++loginGen;
+        final Runnable retry = () -> signIn(then, cancel);
         panel("Sign in with Steam", "Getting a sign-in code…", null, true, null, null, null, null);
         // Own thread, not the worker: a stale attempt keeps blocking until Steam gives up on it.
         new Thread(() -> {
             try {
                 WmCloud.login(url -> runOnUiThread(() -> {
                     if (gen == loginGen) panel("Sign in with Steam", SCAN, qrBitmap(url), false,
-                            "New code", this::signIn, "Cancel", this::cancelSignIn);
+                            "New code", retry, "Cancel", () -> { loginGen++; cancel.run(); });
                 }));
-                runOnUiThread(() -> { if (gen == loginGen) syncThenLaunch(); });
+                runOnUiThread(() -> { if (gen == loginGen) then.run(); });
             } catch (Exception e) {
                 Log.w(TAG, "steam sign-in failed", e);
                 runOnUiThread(() -> {
                     if (gen == loginGen) panel("Sign-in failed", e.getMessage(), null, false,
-                            "Try again", this::signIn, "Play offline", this::launchGame);
+                            "Try again", retry, "Back", cancel);
                 });
             }
         }, "steam-login").start();
     }
 
-    private void cancelSignIn() {
-        loginGen++;
-        launchGame();
+    /** Fetches only Balatro.exe from the Windows depot -- the game data rides inside it -- then builds. */
+    private void downloadFromSteam() {
+        SteamSync.configure(this);
+        if (!WmCloud.isLoggedIn()) {
+            signIn(() -> { buildUi(); downloadFromSteam(); }, this::buildUi);
+            return;
+        }
+        steamButton.setEnabled(false);
+        pickButton.setEnabled(false);
+        buildButton.setEnabled(false);
+        progress.setVisibility(View.VISIBLE);
+        progress.setProgress(0);
+        status.setText("Downloading Balatro.exe from Steam…");
+        new Thread(() -> {
+            try {
+                File dir = new File(getCacheDir(), "steam");
+                WmCloud.downloadFiles(dir, java.util.Collections.singleton("Balatro.exe"),
+                        pct -> runOnUiThread(() -> progress.setProgress(Math.round(pct))));
+                GameAssembler.Info probed = GameAssembler.probe(this, new File(dir, "Balatro.exe"));
+                runOnUiThread(() -> {
+                    progress.setVisibility(View.GONE);
+                    steamButton.setEnabled(true);
+                    pickButton.setEnabled(true);
+                    info = probed;
+                    showProbe("Balatro.exe from Steam", probed);
+                    if (probed.usable()) startBuild();
+                });
+            } catch (Exception e) {
+                Log.w(TAG, "steam download failed", e);
+                runOnUiThread(() -> {
+                    progress.setVisibility(View.GONE);
+                    steamButton.setEnabled(true);
+                    pickButton.setEnabled(true);
+                    status.setText("Steam download failed:\n  " + e.getMessage());
+                });
+            }
+        }, "steam-download").start();
     }
 
     private void syncThenLaunch() {
@@ -414,8 +451,13 @@ public class SetupActivity extends Activity {
                 + "versions may work but are untested. Console, mobile and "
                 + "demo builds are not supported.");
 
+        steamButton = new Button(this);
+        steamButton.setText("Download from Steam");
+        steamButton.setOnClickListener(v -> downloadFromSteam());
+        root.addView(steamButton, buttonParams(pad));
+
         pickButton = new Button(this);
-        pickButton.setText("Choose your Balatro file…");
+        pickButton.setText("…or choose your Balatro file");
         pickButton.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) {
                 Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT);
@@ -453,6 +495,12 @@ public class SetupActivity extends Activity {
         ScrollView scroll = new ScrollView(this);
         scroll.addView(root);
         setContentView(scroll);
+    }
+
+    private static void deleteTree(File f) {
+        File[] kids = f.listFiles();
+        if (kids != null) for (File k : kids) deleteTree(k);
+        f.delete();
     }
 
     private void addBody(LinearLayout root, String text) {
@@ -574,13 +622,13 @@ public class SetupActivity extends Activity {
      */
     private void offerShortcutThenLaunch() {
         if (Build.VERSION.SDK_INT < 26) {
-            launchGame();
+            beforeLaunch();
             return;
         }
         final ShortcutManager sm =
                 getSystemService(ShortcutManager.class);
         if (sm == null || !sm.isRequestPinShortcutSupported()) {
-            launchGame();
+            beforeLaunch();
             return;
         }
 
@@ -606,7 +654,7 @@ public class SetupActivity extends Activity {
                             @Override public void run() {
                                 if (awaitingPin) {
                                     awaitingPin = false;
-                                    launchGame();
+                                    beforeLaunch();
                                 }
                             }
                         }, 20000);
@@ -616,7 +664,7 @@ public class SetupActivity extends Activity {
                         .OnClickListener() {
                     @Override public void onClick(
                             DialogInterface d, int w) {
-                        launchGame();
+                        beforeLaunch();
                     }
                 })
                 .setCancelable(false)
@@ -636,7 +684,7 @@ public class SetupActivity extends Activity {
         super.onResume();
         if (awaitingPin && pinShown) {
             awaitingPin = false;
-            launchGame();
+            beforeLaunch();
         }
     }
 
@@ -734,6 +782,7 @@ public class SetupActivity extends Activity {
                         @Override public void run() {
                             progress.setProgress(100);
                             status.setText("Done.");
+                            deleteTree(new File(getCacheDir(), "steam"));
                             offerShortcutThenLaunch();
                         }
                     });
