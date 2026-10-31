@@ -572,6 +572,14 @@ local function panel_mapping(w, h)
     end, S * k
 end
 
+--- Room-relative tiles -> screen-2 pixels, plus panel pixels per tile.
+function render.tile_to_panel(tx, ty, w, h)
+    local f, k = panel_mapping(w, h)
+    if not f then return nil end
+    local px, py = f(tx, ty)
+    return px, py, k
+end
+
 --- Inverse of the panel mapping: screen-2 pixels -> ROOM-RELATIVE tiles.
 ---
 --- Room-relative is what the DRAG path wants, since it assigns the result

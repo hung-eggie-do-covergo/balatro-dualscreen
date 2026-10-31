@@ -45,6 +45,8 @@ DS.settings = settings
 pcall(settings.install)
 pcall(buttons.install)
 pcall(menu.install)
+DS.render = render
+pcall(require("dualscreen.focusmap").install)
 
 DS.gamepad = gamepad
 
