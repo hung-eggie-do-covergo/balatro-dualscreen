@@ -202,8 +202,11 @@ def _png_from_dib(dib):
 def extract_icon(container):
     """PNG bytes of the game's icon, or None. `container` is the same path
     the rest of the build takes: a Balatro.app directory or a Balatro.exe,
-    or a bare GameIcon.icns (e.g. from the macOS depot)."""
+    or a bare GameIcon.icns (e.g. from the macOS depot), or a ready-made PNG."""
     try:
+        if container.lower().endswith(".png"):
+            with open(container, "rb") as f:
+                return f.read()
         if container.endswith(".icns"):
             return _icon_from_icns(container)
         if os.path.isdir(container):

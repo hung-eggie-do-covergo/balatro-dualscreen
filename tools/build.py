@@ -334,8 +334,8 @@ def main():
                         "The game is assembled on device from the user's own copy "
                         "at first launch. --balatro is not needed and not used.")
     p.add_argument("--icon",
-                   help="take the launcher icon from this Balatro.app, Balatro.exe or "
-                        "GameIcon.icns. The APK then carries the game's artwork and "
+                   help="take the launcher icon from this Balatro.app, Balatro.exe, "
+                        "GameIcon.icns or PNG. The APK then carries the game's artwork and "
                         "is for your own devices only, never for publishing")
     p.add_argument("--app-id",
                    help="build under another application id, e.g. "
