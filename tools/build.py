@@ -275,7 +275,7 @@ def do_icon(balatro):
           % (len(png) // 1024, os.path.relpath(ICON_RES, ROOT)))
 
 
-def do_gradle(output):
+def do_gradle(output, app_id=None):
     step(6, 6, "Building the APK (Gradle)")
     gradlew = os.path.join(ANDROID_DIR, "gradlew")
     if not os.path.isfile(gradlew):
@@ -292,7 +292,10 @@ def do_gradle(output):
         )
 
     proc = subprocess.run(
-        [gradlew, GRADLE_TASK, "--console=plain"],
+        [gradlew, GRADLE_TASK, "--console=plain"] + (
+            # A separate id installs beside, never over, an existing install.
+            ["-Papp.application_id=" + app_id, "-Papp.name=Balatro DS (" + app_id.rsplit(".", 1)[-1] + ")"]
+            if app_id else []),
         cwd=ANDROID_DIR, env=env,
     )
     if proc.returncode != 0:
@@ -330,13 +333,16 @@ def main():
                    help="build the PUBLISHABLE apk: contains no Balatro at all. "
                         "The game is assembled on device from the user's own copy "
                         "at first launch. --balatro is not needed and not used.")
+    p.add_argument("--app-id",
+                   help="build under another application id, e.g. "
+                        "com.balatro.dualscreen.test, to install beside the real one")
     args = p.parse_args()
 
     if args.release:
         if args.balatro:
             p.error("--release builds contain no Balatro; drop --balatro")
         do_stage_release()
-        do_gradle(args.output)
+        do_gradle(args.output, args.app_id)
         print()
         print("This APK ships NO Balatro code or assets. Safe to publish.")
         return
@@ -357,7 +363,7 @@ def main():
 
     do_stage()
     do_icon(args.balatro)
-    do_gradle(args.output)
+    do_gradle(args.output, args.app_id)
 
 
 if __name__ == "__main__":
