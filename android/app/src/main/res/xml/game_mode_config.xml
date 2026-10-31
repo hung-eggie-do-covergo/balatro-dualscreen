@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Opts out of OEM downscaling and FPS overrides: both blur the pixel art and
+     fight the overlay's own 60 FPS cap. Battery/performance modes are fine. -->
+<game-mode-config
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:allowGameDownscaling="false"
+    android:allowGameFpsOverride="false"
+    android:supportsBatteryGameMode="true"
+    android:supportsPerformanceGameMode="true" />

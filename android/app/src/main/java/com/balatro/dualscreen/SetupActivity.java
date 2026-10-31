@@ -95,6 +95,12 @@ public class SetupActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        // Fill the camera cutout band instead of leaving it black beside the felt.
+        if (Build.VERSION.SDK_INT >= 28) {
+            getWindow().getAttributes().layoutInDisplayCutoutMode =
+                    android.view.WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES;
+        }
+        getWindow().getDecorView().setBackgroundColor(FELT);
 
         // A game already on board: only Steam Cloud is left to do.
         if (GameAssembler.assembled(this) != null || hasEmbeddedGame()) {
@@ -286,6 +292,7 @@ public class SetupActivity extends Activity {
     private static final int CARD = Color.rgb(36, 52, 46);
     private static final int BLUE = Color.rgb(0, 157, 255);
     private static final int RED = Color.rgb(254, 95, 85);
+    private static final int ORANGE = Color.rgb(253, 162, 0);
 
     private int dp(float v) {
         return Math.round(v * getResources().getDisplayMetrics().density);
@@ -423,78 +430,94 @@ public class SetupActivity extends Activity {
     // ------------------------------------------------------------------
 
     private void buildUi() {
-        int pad = (int) (16 * getResources().getDisplayMetrics().density);
+        getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_FULLSCREEN
+                | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY);
 
-        LinearLayout root = new LinearLayout(this);
-        root.setOrientation(LinearLayout.VERTICAL);
-        root.setBackgroundColor(Color.rgb(20, 32, 26));
-        root.setPadding(pad, pad, pad, pad);
+        LinearLayout card = new LinearLayout(this);
+        card.setOrientation(LinearLayout.VERTICAL);
+        card.setBackground(rounded(CARD, 18));
+        card.setPadding(dp(28), dp(24), dp(28), dp(24));
 
         TextView title = new TextView(this);
-        title.setText("Balatro Dual Screen — first-time setup");
-        title.setTextSize(22);
+        title.setText("Balatro Dual Screen");
+        title.setTextSize(24);
         title.setTypeface(Typeface.DEFAULT_BOLD);
         title.setTextColor(Color.WHITE);
-        root.addView(title);
+        card.addView(title);
 
-        addBody(root,
-                "This mod is a FREE release. If you have paid money for it, "
-                + "demand a refund.");
-        addBody(root,
-                "This app contains no Balatro. To play, you must provide a "
-                + "legally obtained copy of the game you already own: the "
-                + "Steam Balatro.exe (Windows), a ZIP of Balatro.app (macOS), "
-                + "or the Balatro.love archive.");
-        addBody(root,
-                "Supported version: Steam 1.0.1o (PROD_PC_Console) — the "
-                + "version this mod is built and tested against. Other PC "
-                + "versions may work but are untested. Console, mobile and "
-                + "demo builds are not supported.");
+        addBody(card, "This app contains no Balatro. Download your own copy from Steam, "
+                + "or choose a Balatro.exe, a zipped Balatro.app or a Balatro.love you own.");
+        addBody(card, "Built and tested against Steam 1.0.1o. Newer PC versions get a "
+                + "warning and usually work; console, mobile and demo builds do not.");
+        addBody(card, "Free and unofficial. If you paid for this, ask for a refund.");
 
-        steamButton = new Button(this);
-        steamButton.setText("Download from Steam");
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        steamButton = styledButton("Download from Steam", BLUE);
         steamButton.setOnClickListener(v -> downloadFromSteam());
-        root.addView(steamButton, buttonParams(pad));
-
-        pickButton = new Button(this);
-        pickButton.setText("…or choose your Balatro file");
-        pickButton.setOnClickListener(new View.OnClickListener() {
-            @Override public void onClick(View v) {
-                Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT);
-                i.addCategory(Intent.CATEGORY_OPENABLE);
-                i.setType("*/*");
-                startActivityForResult(i, PICK_REQUEST);
-            }
+        row.addView(steamButton, rowParams());
+        pickButton = styledButton("Choose a file", ORANGE);
+        pickButton.setOnClickListener(v -> {
+            Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+            i.addCategory(Intent.CATEGORY_OPENABLE);
+            i.setType("*/*");
+            startActivityForResult(i, PICK_REQUEST);
         });
-        root.addView(pickButton, buttonParams(pad));
+        row.addView(pickButton, rowParams());
+        buildButton = styledButton("Start build", BLUE);
+        buildButton.setOnClickListener(v -> startBuild());
+        buildButton.setVisibility(View.GONE); // shown once a file passes the check
+        row.addView(buildButton, rowParams());
+        LinearLayout.LayoutParams rowLp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        rowLp.topMargin = dp(20);
+        card.addView(row, rowLp);
+
+        progress = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
+        progress.setMax(100);
+        progress.setVisibility(View.GONE);
+        LinearLayout.LayoutParams pLp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        pLp.topMargin = dp(16);
+        card.addView(progress, pLp);
 
         status = new TextView(this);
         status.setTypeface(Typeface.MONOSPACE);
-        status.setTextSize(14);
-        status.setTextColor(Color.rgb(200, 210, 205));
-        status.setPadding(0, pad, 0, pad);
-        status.setText("No file selected yet.");
-        root.addView(status);
-
-        buildButton = new Button(this);
-        buildButton.setText("Start build");
-        buildButton.setEnabled(false);
-        buildButton.setOnClickListener(new View.OnClickListener() {
-            @Override public void onClick(View v) {
-                startBuild();
-            }
-        });
-        root.addView(buildButton, buttonParams(pad));
-
-        progress = new ProgressBar(this, null,
-                android.R.attr.progressBarStyleHorizontal);
-        progress.setMax(100);
-        progress.setVisibility(View.GONE);
-        root.addView(progress);
+        status.setTextSize(13);
+        status.setTextColor(Color.rgb(170, 186, 178));
+        status.setPadding(0, dp(12), 0, 0);
+        card.addView(status);
 
         ScrollView scroll = new ScrollView(this);
+        scroll.setFillViewport(true);
+        FrameLayout root = new FrameLayout(this);
+        root.setPadding(dp(16), dp(16), dp(16), dp(16));
+        root.addView(card, new FrameLayout.LayoutParams(dp(620), FrameLayout.LayoutParams.WRAP_CONTENT,
+                Gravity.CENTER));
         scroll.addView(root);
+        scroll.setBackgroundColor(FELT);
         setContentView(scroll);
+        steamButton.requestFocus();
+    }
+
+    private Button styledButton(String label, int colour) {
+        Button btn = new Button(this);
+        btn.setText(label);
+        btn.setAllCaps(false);
+        btn.setTextSize(16);
+        btn.setTypeface(Typeface.DEFAULT_BOLD);
+        btn.setTextColor(Color.WHITE);
+        btn.setBackground(buttonBackground(colour));
+        btn.setStateListAnimator(null);
+        btn.setPadding(dp(20), 0, dp(20), 0);
+        return btn;
+    }
+
+    private LinearLayout.LayoutParams rowParams() {
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT, dp(48));
+        lp.rightMargin = dp(12);
+        return lp;
     }
 
     private static void deleteTree(File f) {
@@ -506,18 +529,11 @@ public class SetupActivity extends Activity {
     private void addBody(LinearLayout root, String text) {
         TextView tv = new TextView(this);
         tv.setText(text);
-        tv.setTextSize(15);
-        tv.setTextColor(Color.rgb(220, 226, 222));
-        tv.setPadding(0, (int) (10 * getResources().getDisplayMetrics().density), 0, 0);
+        tv.setTextSize(16);
+        tv.setLineSpacing(0, 1.15f);
+        tv.setTextColor(Color.rgb(200, 212, 206));
+        tv.setPadding(0, dp(10), 0, 0);
         root.addView(tv);
-    }
-
-    private LinearLayout.LayoutParams buttonParams(int pad) {
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT);
-        lp.topMargin = pad;
-        return lp;
     }
 
     // ------------------------------------------------------------------
@@ -587,6 +603,7 @@ public class SetupActivity extends Activity {
         if (p.problem != null) {
             sb.append("\n✗ ").append(p.problem);
             buildButton.setEnabled(false);
+            buildButton.setVisibility(View.GONE);
         } else {
             sb.append("Detected: ").append(p.kind).append('\n');
             sb.append("Version:  ").append(p.versionDisplay)
@@ -600,6 +617,7 @@ public class SetupActivity extends Activity {
             }
             sb.append("\n✓ This looks buildable.");
             buildButton.setEnabled(true);
+            buildButton.setVisibility(View.VISIBLE);
         }
         status.setText(sb.toString());
     }
