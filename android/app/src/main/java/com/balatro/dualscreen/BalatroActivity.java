@@ -132,6 +132,17 @@ public class BalatroActivity extends GameActivity {
         updateForeground();
     }
 
+    /** True while a game session is alive in this process. */
+    static boolean isRunning() {
+        return instance != null;
+    }
+
+    @Override
+    protected void onStop() {
+        super.onStop();
+        SteamSync.pushAsync(this);
+    }
+
     @Override
     protected void onPause() {
         activityResumed = false;
@@ -174,7 +185,11 @@ public class BalatroActivity extends GameActivity {
         // once the activity is torn down is the standard SDL-app fix, and by
         // this point everything -- companion display included -- is already
         // shut down.
-        Process.killProcess(Process.myPid());
+        // A save upload queued by onStop must finish first, or quitting drops it.
+        new Thread(() -> {
+            SteamSync.awaitPushes(30);
+            Process.killProcess(Process.myPid());
+        }).start();
     }
 
     /** Single place that decides whether the companion display should be up. */

@@ -32,7 +32,9 @@ import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.Rect;
 import android.graphics.Typeface;
+import android.graphics.drawable.GradientDrawable;
 import android.graphics.drawable.Icon;
+import android.graphics.drawable.StateListDrawable;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -41,6 +43,8 @@ import android.util.Log;
 import android.view.Gravity;
 import android.view.View;
 import android.widget.Button;
+import android.widget.FrameLayout;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
 import android.widget.ScrollView;
@@ -49,6 +53,10 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import wmcloud.ConflictException;
+import wmcloud.WmCloud;
 /**
  * First-launch setup: the release APK contains no Balatro, and this screen is
  * where the user's own copy becomes the game.
@@ -87,9 +95,9 @@ public class SetupActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
-        // A game already on board means this screen has no job.
+        // A game already on board: only Steam Cloud is left to do.
         if (GameAssembler.assembled(this) != null || hasEmbeddedGame()) {
-            launchGame();
+            beforeLaunch();
             return;
         }
 
@@ -108,6 +116,269 @@ public class SetupActivity extends Activity {
     private void launchGame() {
         startActivity(new Intent(this, BalatroActivity.class));
         finish();
+    }
+
+    // ------------------------------------------------------------------
+    // Steam Cloud
+    // ------------------------------------------------------------------
+
+    private static final String PREF_STEAM_DECLINED = "steam_declined";
+    private final ExecutorService worker = Executors.newSingleThreadExecutor();
+
+    private void beforeLaunch() {
+        // Pulling under a running game would overwrite saves it holds open.
+        if (BalatroActivity.isRunning()) {
+            launchGame();
+            return;
+        }
+        SteamSync.configure(this);
+        if (WmCloud.isLoggedIn()) {
+            syncThenLaunch();
+        } else if (getPreferences(MODE_PRIVATE).getBoolean(PREF_STEAM_DECLINED, false)) {
+            launchGame();
+        } else {
+            panel("Steam Cloud saves", "Sign in once to keep your runs and progress in step with Steam on PC.",
+                    null, false,
+                    "Sign in with Steam", this::signIn,
+                    "Not now", () -> {
+                        getPreferences(MODE_PRIVATE).edit().putBoolean(PREF_STEAM_DECLINED, true).apply();
+                        launchGame();
+                    });
+        }
+    }
+
+    private static final String SCAN = "Open the Steam app on your phone, tap the shield (Steam Guard) and scan this code.";
+
+    /** Bumped per sign-in attempt; a superseded attempt's callbacks are ignored. */
+    private int loginGen;
+
+    private void signIn() {
+        final int gen = ++loginGen;
+        panel("Sign in with Steam", "Getting a sign-in code…", null, true, null, null, null, null);
+        // Own thread, not the worker: a stale attempt keeps blocking until Steam gives up on it.
+        new Thread(() -> {
+            try {
+                WmCloud.login(url -> runOnUiThread(() -> {
+                    if (gen == loginGen) panel("Sign in with Steam", SCAN, qrBitmap(url), false,
+                            "New code", this::signIn, "Cancel", this::cancelSignIn);
+                }));
+                runOnUiThread(() -> { if (gen == loginGen) syncThenLaunch(); });
+            } catch (Exception e) {
+                Log.w(TAG, "steam sign-in failed", e);
+                runOnUiThread(() -> {
+                    if (gen == loginGen) panel("Sign-in failed", e.getMessage(), null, false,
+                            "Try again", this::signIn, "Play offline", this::launchGame);
+                });
+            }
+        }, "steam-login").start();
+    }
+
+    private void cancelSignIn() {
+        loginGen++;
+        launchGame();
+    }
+
+    private void syncThenLaunch() {
+        panel("Steam Cloud", "Syncing saves…", null, true, null, null, null, null);
+        worker.execute(() -> {
+            try {
+                WmCloud.pull(SteamSync.saveDir(this), false);
+                runOnUiThread(this::launchGame);
+            } catch (ConflictException e) {
+                runOnUiThread(this::conflict);
+            } catch (Exception e) {
+                Log.w(TAG, "steam pull failed", e);
+                runOnUiThread(() -> panel("Can't reach Steam", "Your saves will sync next time.", null, false,
+                        "Play offline", this::launchGame, "Retry", this::syncThenLaunch));
+            }
+        });
+    }
+
+    /** Both sides changed since the last sync. The losing side is backed up either way. */
+    private void conflict() {
+        panel("Which saves?", "Saves changed both on this device and in Steam Cloud. "
+                        + "This device last saved " + lastSaved() + ". The copy you don't pick is kept as a backup.",
+                null, false,
+                "Use Steam Cloud", () -> resolve(false),
+                "Keep this device…", this::confirmOverwrite);
+    }
+
+    /** Overwriting the cloud replaces the PC's saves too, so it never happens on one tap. */
+    private void confirmOverwrite() {
+        Button overwrite = panel("Overwrite Steam Cloud?", "Your saves on PC and every other device will be "
+                        + "replaced by this device's. The current cloud copy is backed up on this device only.",
+                null, false,
+                "Go back", this::conflict,
+                "Overwrite cloud", () -> resolve(true));
+        overwrite.setAlpha(0.4f);
+        overwrite.postDelayed(() -> overwrite.setEnabled(false), 0);
+        overwrite.postDelayed(() -> { overwrite.setEnabled(true); overwrite.setAlpha(1f); }, 1500);
+    }
+
+    private String lastSaved() {
+        long newest = 0;
+        File[] profiles = SteamSync.saveDir(this).listFiles();
+        if (profiles != null) {
+            for (File p : profiles) {
+                File[] files = p.listFiles();
+                if (files != null) for (File f : files) newest = Math.max(newest, f.lastModified());
+            }
+        }
+        return newest == 0 ? "never"
+                : android.text.format.DateUtils.getRelativeTimeSpanString(newest).toString().toLowerCase();
+    }
+
+    private void resolve(boolean keepDevice) {
+        panel("Steam Cloud", keepDevice ? "Uploading this device's saves…" : "Downloading saves from Steam Cloud…",
+                null, true, null, null, null, null);
+        worker.execute(() -> {
+            try {
+                File dir = SteamSync.saveDir(this);
+                if (keepDevice) WmCloud.push(dir, true); else WmCloud.pull(dir, true);
+                runOnUiThread(this::launchGame);
+            } catch (Exception e) {
+                Log.w(TAG, "steam resolve failed", e);
+                runOnUiThread(() -> panel("Sync failed", e.getMessage(), null, false,
+                        "Retry", () -> resolve(keepDevice), "Play offline", this::launchGame));
+            }
+        });
+    }
+
+    // Balatro's own UI blue and red, on the setup screen's felt green.
+    private static final int FELT = Color.rgb(20, 32, 26);
+    private static final int CARD = Color.rgb(36, 52, 46);
+    private static final int BLUE = Color.rgb(0, 157, 255);
+    private static final int RED = Color.rgb(254, 95, 85);
+
+    private int dp(float v) {
+        return Math.round(v * getResources().getDisplayMetrics().density);
+    }
+
+    private GradientDrawable rounded(int colour, float radiusDp) {
+        GradientDrawable d = new GradientDrawable();
+        d.setColor(colour);
+        d.setCornerRadius(dp(radiusDp));
+        return d;
+    }
+
+    /** Solid rounded fill; a white outline marks controller focus. */
+    private StateListDrawable buttonBackground(int colour) {
+        GradientDrawable focused = rounded(colour, 10);
+        focused.setStroke(dp(3), Color.WHITE);
+        StateListDrawable d = new StateListDrawable();
+        d.addState(new int[] {android.R.attr.state_focused}, focused);
+        d.addState(new int[] {}, rounded(colour, 10));
+        return d;
+    }
+
+    /**
+     * A centred card: optional QR tile, title, message, spinner, and up to two buttons. Returns the
+     * second button, or null. Buttons ignore taps for a moment so one meant for the card being
+     * replaced cannot land on this one.
+     */
+    private Button panel(String title, String message, Bitmap qr, boolean busy,
+                       String a, Runnable runA, String b, Runnable runB) {
+        getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_FULLSCREEN
+                | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY);
+
+        LinearLayout card = new LinearLayout(this);
+        card.setOrientation(LinearLayout.HORIZONTAL);
+        card.setGravity(Gravity.CENTER_VERTICAL);
+        card.setBackground(rounded(CARD, 18));
+        card.setPadding(dp(28), dp(24), dp(28), dp(24));
+
+        if (qr != null) {
+            ImageView iv = new ImageView(this);
+            iv.setImageBitmap(qr);
+            iv.setBackground(rounded(Color.WHITE, 12));
+            iv.setPadding(dp(10), dp(10), dp(10), dp(10));
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(dp(200), dp(200));
+            lp.rightMargin = dp(28);
+            card.addView(iv, lp);
+        }
+
+        LinearLayout text = new LinearLayout(this);
+        text.setOrientation(LinearLayout.VERTICAL);
+        card.addView(text, new LinearLayout.LayoutParams(dp(qr != null ? 320 : 420),
+                LinearLayout.LayoutParams.WRAP_CONTENT));
+
+        TextView t = new TextView(this);
+        t.setText(title);
+        t.setTextSize(24);
+        t.setTypeface(Typeface.DEFAULT_BOLD);
+        t.setTextColor(Color.WHITE);
+        text.addView(t);
+
+        TextView m = new TextView(this);
+        m.setText(message);
+        m.setTextSize(16);
+        m.setLineSpacing(0, 1.15f);
+        m.setTextColor(Color.rgb(200, 212, 206));
+        m.setPadding(0, dp(8), 0, 0);
+        text.addView(m);
+
+        if (busy) {
+            ProgressBar spin = new ProgressBar(this);
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(dp(36), dp(36));
+            lp.topMargin = dp(16);
+            text.addView(spin, lp);
+        }
+
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        Button second = null;
+        for (int i = 0; i < 2; i++) {
+            final String label = i == 0 ? a : b;
+            final Runnable run = i == 0 ? runA : runB;
+            if (label == null) continue;
+            Button btn = new Button(this);
+            btn.setText(label);
+            btn.setAllCaps(false);
+            btn.setTextSize(16);
+            btn.setTypeface(Typeface.DEFAULT_BOLD);
+            btn.setTextColor(Color.WHITE);
+            btn.setBackground(buttonBackground(i == 0 ? BLUE : RED));
+            btn.setStateListAnimator(null);
+            btn.setPadding(dp(20), 0, dp(20), 0);
+            btn.setOnClickListener(v -> run.run());
+            btn.setEnabled(false);
+            final boolean primary = i == 0;
+            btn.postDelayed(() -> {
+                btn.setEnabled(true);
+                if (primary) btn.requestFocus(); // controller users land on the main action
+            }, 600);
+            second = btn;
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT, dp(48));
+            lp.rightMargin = dp(12);
+            row.addView(btn, lp);
+        }
+        if (row.getChildCount() > 0) {
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+            lp.topMargin = dp(20);
+            text.addView(row, lp);
+        }
+
+        FrameLayout root = new FrameLayout(this);
+        root.setBackgroundColor(FELT);
+        root.addView(card, new FrameLayout.LayoutParams(FrameLayout.LayoutParams.WRAP_CONTENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.CENTER));
+        setContentView(root);
+        return b != null ? second : null;
+    }
+
+    private Bitmap qrBitmap(String url) {
+        boolean[][] m = WmCloud.qrMatrix(url);
+        Bitmap bmp = Bitmap.createBitmap(m.length, m.length, Bitmap.Config.ARGB_8888);
+        bmp.eraseColor(Color.WHITE);
+        for (int y = 0; y < m.length; y++) {
+            for (int x = 0; x < m[y].length; x++) {
+                if (m[y][x]) bmp.setPixel(x, y, Color.BLACK);
+            }
+        }
+        // Nearest-neighbour upscale keeps modules crisp; ImageView scales it into its tile.
+        return Bitmap.createScaledBitmap(bmp, m.length * 8, m.length * 8, false);
     }
 
     // ------------------------------------------------------------------
@@ -372,7 +643,7 @@ public class SetupActivity extends Activity {
     private void requestPin(ShortcutManager sm) {
         try {
             Intent launch = new Intent(Intent.ACTION_MAIN);
-            launch.setClass(this, BalatroActivity.class);
+            launch.setClass(this, SetupActivity.class);
 
             ShortcutInfo.Builder b =
                     new ShortcutInfo.Builder(this, "balatro")
