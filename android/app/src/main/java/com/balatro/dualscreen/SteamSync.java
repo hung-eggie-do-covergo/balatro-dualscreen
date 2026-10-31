@@ -14,6 +14,7 @@ final class SteamSync {
     private static final String TAG = "BalatroDS";
     private static final ExecutorService PUSHER = Executors.newSingleThreadExecutor();
     private static boolean configured;
+    private static final boolean SUBMIT_ACHIEVEMENTS = true;
 
     private SteamSync() {}
 
@@ -49,7 +50,7 @@ final class SteamSync {
         PUSHER.execute(() -> {
             try {
                 waitForQuietSaves(dir);
-                WmCloud.push(dir, false);
+                WmCloud.afterPlay(dir, SUBMIT_ACHIEVEMENTS);
             } catch (Exception e) {
                 // A changed cloud resurfaces as a conflict at the next launch's pull.
                 Log.w(TAG, "steam: push skipped: " + e.getMessage());

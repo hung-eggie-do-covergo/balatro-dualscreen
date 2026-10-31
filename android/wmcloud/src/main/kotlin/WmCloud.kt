@@ -71,6 +71,21 @@ object WmCloud {
     @JvmStatic @Throws(WmCloudException::class)
     fun downloadGame(dest: File, onProgress: Consumer<Float>) = wmcloud.downloadGame(dest) { onProgress.accept(it) }
 
+    /**
+     * After a session, over one Steam connection: pushes saves, then submits achievements earned in the
+     * game (logs them only unless [submit]). An achievement failure waits for the next session.
+     */
+    @JvmStatic @Throws(WmCloudException::class)
+    fun afterPlay(game: File, submit: Boolean) {
+        val store = StoreStatsHandler()
+        Session(false, listOf(store)).use { s ->
+            var pushFailed: WmCloudException? = null
+            try { wmcloud.push(s, game, false) } catch (e: WmCloudException) { pushFailed = e }
+            try { achievements(s, store, game, submit, false) } catch (e: Exception) { log("achievements: $e") }
+            pushFailed?.let { throw it }
+        }
+    }
+
     @JvmStatic @Throws(WmCloudException::class)
     fun pull(game: File, force: Boolean) = wmcloud.pull(game, force)
 

@@ -47,6 +47,7 @@ pcall(buttons.install)
 pcall(menu.install)
 DS.render = render
 pcall(require("dualscreen.focusmap").install)
+pcall(require("dualscreen.achievements").install)
 
 DS.gamepad = gamepad
 

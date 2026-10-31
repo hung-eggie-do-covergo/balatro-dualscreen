@@ -378,6 +378,7 @@ private fun run(args: List<String>, force: Boolean) {
         }
         "pull" -> pull(gameDir(args), force)
         "push" -> push(gameDir(args), force)
-        else -> die("usage: wmcloud login | list | pull --game <dir> [--force] | push --game <dir> [--force]")
+        "achievements" -> achievements(gameDir(args), "--submit" in args, "-v" in args)
+        else -> die("usage: wmcloud login | list | pull --game <dir> [--force] | push --game <dir> [--force] | achievements --game <dir> [-v] [--submit]")
     }
 }
