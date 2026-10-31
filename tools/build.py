@@ -333,6 +333,10 @@ def main():
                    help="build the PUBLISHABLE apk: contains no Balatro at all. "
                         "The game is assembled on device from the user's own copy "
                         "at first launch. --balatro is not needed and not used.")
+    p.add_argument("--icon",
+                   help="take the launcher icon from this Balatro.app, Balatro.exe or "
+                        "GameIcon.icns. The APK then carries the game's artwork and "
+                        "is for your own devices only, never for publishing")
     p.add_argument("--app-id",
                    help="build under another application id, e.g. "
                         "com.balatro.dualscreen.test, to install beside the real one")
@@ -342,9 +346,14 @@ def main():
         if args.balatro:
             p.error("--release builds contain no Balatro; drop --balatro")
         do_stage_release()
+        if args.icon:
+            do_icon(args.icon)
         do_gradle(args.output, args.app_id)
         print()
-        print("This APK ships NO Balatro code or assets. Safe to publish.")
+        if args.icon:
+            print("This APK carries Balatro's icon. For your own devices only: NOT safe to publish.")
+        else:
+            print("This APK ships NO Balatro code or assets. Safe to publish.")
         return
 
     if not args.balatro:
@@ -362,7 +371,7 @@ def main():
         return
 
     do_stage()
-    do_icon(args.balatro)
+    do_icon(args.icon or args.balatro)
     do_gradle(args.output, args.app_id)
 
 
